@@ -40,7 +40,6 @@ public:
 	{
 		if (synch_idx.has_value())
 		{
-			auto r{ synch_idx.value().first };
 			auto idxs_cols{ m_idxs[0] };
             std::array<T, dvbs2_mono_rows_v<T>> col{};
 			for (T idx{}; auto && elm : idxs_cols)
@@ -95,4 +94,24 @@ public:
 		data.erase(std::next(std::begin(data), col[6][1] - 6));
 		data.erase(std::next(std::begin(data), col[7][1] - 7));
 	}
+    static void
+    get_data(std::string in, std::string out){
+        std::ifstream src{in, std::ios::binary};
+        std::ofstream dst{out, std::ios::binary | std::ios::app};
+        dvbs2_mono_idxs_t<> idxs{};
+        while(!src.fail()){
+            std::vector<uint8_t> data(dvbs2_mono_pks_v<> + 1);
+            src.read(reinterpret_cast<char*>(data.data()),data.size());
+            ChangeEndian(data);
+            idxs = dvbs2_mono<>::find_synch(data,idxs);
+            if(idxs.has_value()){
+                dvbs2_mono<>::remove_synch(data, idxs.value());
+                src.seekg(-1, std::ios::cur);
+                dst.write(reinterpret_cast<char*>(data.data()), data.size());
+            }
+            else{
+                src.seekg(-((dvbs2_mono_pks_v<> + 1) - dvbs2_mono_period_v<>), std::ios::cur);
+            }
+        }
+    }
 };
