@@ -31,8 +31,7 @@ class dvbs2_mono : idxs::dvbs2_mono<T>
 			data[4] == 0x47 &&
 			data[5] == 0x47 &&
 			data[6] == 0x47 &&
-			data[7] == 0x47 &&
-			data[8] == 0xB8
+            data[7] == 0x47
 		};
 	}
 public:
