@@ -1,5 +1,7 @@
 #include "stdafx/stdafx.h"
 
+namespace fs = std::filesystem;
+
 template<class T = size_t>
 using dvbs2_mono_t = typename idxs::dvbs2_mono<T>::value_type;
 template<class T = size_t>
@@ -19,6 +21,7 @@ template<class T = size_t>
 class dvbs2_mono : idxs::dvbs2_mono<T>
 {
     static constexpr auto m_idxs{ idxs::dvbs2_mono<T>::get() };
+    static inline std::vector<uint8_t> m_data_prev{};
 
     template<class V>
     static constexpr bool check_synch(V& data)noexcept
@@ -99,11 +102,17 @@ public:
         std::ifstream src{in, std::ios::binary};
         std::ofstream dst{out, std::ios::binary | std::ios::app};
         dvbs2_mono_idxs_t<> idxs{};
-        while(!src.fail()){
+
+        if(m_data_prev.empty()){
             std::vector<uint8_t> data(dvbs2_mono_pks_v<> + 1);
-            src.read(reinterpret_cast<char*>(data.data()),data.size());
+            std::move(
+                std::begin(m_data_prev), std::begin(m_data_prev),
+                std::begin(data));
+            src.read(
+                reinterpret_cast<char*>(*std::next(std::begin(data), m_data_prev.size())),
+                data.size() - m_data_prev.size());
             ChangeEndian(data);
-            idxs = dvbs2_mono<>::find_synch(data,idxs);
+            idxs = dvbs2_mono<>::find_synch(data, idxs);
             if(idxs.has_value()){
                 dvbs2_mono<>::remove_synch(data, idxs.value());
                 src.seekg(-1, std::ios::cur);
@@ -112,6 +121,47 @@ public:
             else{
                 src.seekg(-((dvbs2_mono_pks_v<> + 1) - dvbs2_mono_period_v<>), std::ios::cur);
             }
+        }
+        while(!src.fail()){
+            std::vector<uint8_t> data(dvbs2_mono_pks_v<> + 1);
+            src.read(reinterpret_cast<char*>(data.data()), data.size());
+
+            auto counts{src.gcount()};
+            if(counts == dvbs2_mono_pks_v<> + 1){
+                ChangeEndian(data);
+                idxs = dvbs2_mono<>::find_synch(data, idxs);
+                if(idxs.has_value()){
+                    dvbs2_mono<>::remove_synch(data, idxs.value());
+                    src.seekg(-1, std::ios::cur);
+                    dst.write(reinterpret_cast<char*>(data.data()), data.size());
+                }
+                else{
+                    src.seekg(-((dvbs2_mono_pks_v<> + 1) - dvbs2_mono_period_v<>), std::ios::cur);
+                }
+            }
+            else{
+                m_data_prev.resize(counts);
+                std::move(
+                    std::begin(data), std::next(std::begin(data), counts),
+                    std::begin(m_data_prev));
+            }
+        }
+    }
+    static void
+    get_data_dir(std::string in, std::string out){
+        std::vector<fs::path> files{};
+        std::copy_if(
+            fs::directory_iterator{in}, fs::directory_iterator{},
+            std::back_inserter(files),
+            [](fs::path dir){
+                return fs::is_regular_file(dir);
+            }
+        );
+        std::string idx{"000"};
+        std::string file_out{out + "/" + idx};
+        for(auto&& file_in : files){
+            get_data(file_in, file_out);
+            idx = atoi(idx.data()) + 1;
         }
     }
 };
